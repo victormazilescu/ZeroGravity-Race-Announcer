@@ -1,0 +1,79 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>ZeroGravity Settings</title>
+    <style>
+      :root { --bg:#0b0c0f; --panel:#0f1117; --text:#e7e7e7; --muted:#9aa0a6; --line:rgba(255,255,255,0.08); }
+      * { box-sizing:border-box; }
+      body { margin:0; background:var(--bg); color:var(--text); font:13px/1.4 system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; }
+      .wrap { max-width:760px; padding:18px; margin:0 auto; }
+      .card { border:1px solid var(--line); background:var(--panel); border-radius:12px; padding:14px; }
+      .field { margin-top:12px; }
+      .field:first-child { margin-top:0; }
+      label { display:block; color:var(--muted); margin-bottom:6px; }
+      input {
+        width:100%;
+        padding:10px;
+        border-radius:10px;
+        border:1px solid var(--line);
+        background:transparent;
+        color:var(--text);
+        outline:none;
+      }
+      .row { display:flex; gap:10px; margin-top:14px; align-items:center; }
+      button {
+        border:1px solid var(--line);
+        background:transparent;
+        color:var(--text);
+        padding:9px 12px;
+        border-radius:10px;
+        cursor:pointer;
+      }
+      .status { margin-top:10px; color:var(--muted); min-height:18px; }
+      .hint { margin-top:10px; color:var(--muted); font-size:12px; }
+      .sig { margin-top:14px; color:rgba(255,255,255,0.25); font-size:11px; text-align:right; }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="card">
+        <div class="field">
+          <label for="wh1">Webhook 1</label>
+          <input id="wh1" placeholder="https://discord.com/api/webhooks/..." />
+        </div>
+        <div class="field">
+          <label for="wh2">Webhook 2</label>
+          <input id="wh2" placeholder="https://discord.com/api/webhooks/..." />
+        </div>
+        <div class="field">
+          <label for="wh3">Webhook 3</label>
+          <input id="wh3" placeholder="https://discord.com/api/webhooks/..." />
+        </div>
+        <div class="field">
+          <label for="wh4">Webhook 4</label>
+          <input id="wh4" placeholder="https://discord.com/api/webhooks/..." />
+        </div>
+        <div class="field">
+          <label for="wh5">Webhook 5</label>
+          <input id="wh5" placeholder="https://discord.com/api/webhooks/..." />
+        </div>
+
+        <div class="row">
+          <button id="save">Save</button>
+          <button id="clear">Clear all</button>
+        </div>
+
+        <div class="status" id="status"></div>
+        <div class="hint">
+          Keep these private. Anyone with a webhook URL can post to that channel.
+        </div>
+      </div>
+
+      <div class="sig">OblivionRex</div>
+    </div>
+
+    <script src="options.js"></script>
+  </body>
+</html>
