@@ -1,0 +1,45 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <link rel="stylesheet" href="popup.css" />
+    <title>ZeroGravity</title>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="row top">
+        <select id="webhookSelect" class="select" aria-label="Webhook selector"></select>
+        <a class="settings" id="openSettings" href="#">Settings</a>
+      </div>
+
+      <textarea id="text" placeholder="Write message…"></textarea>
+
+      <div class="row">
+        <div class="time" aria-label="Timer offset">
+          <input id="min" type="number" min="0" max="999" value="0" />
+          <span>m</span>
+          <input id="sec" type="number" min="0" max="59" value="0" />
+          <span>s</span>
+        </div>
+
+        <label class="toggle">
+          <input id="useTs" type="checkbox" checked />
+          <span>Timestamp</span>
+        </label>
+      </div>
+
+      <div class="preview" id="preview"></div>
+
+      <div class="row">
+        <button id="send">Send</button>
+      </div>
+
+      <div class="status" id="status"></div>
+
+      <div class="sig">OblivionRex</div>
+    </div>
+
+    <script src="popup.js"></script>
+  </body>
+</html>
