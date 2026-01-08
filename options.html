@@ -8,11 +8,24 @@
       :root { --bg:#0b0c0f; --panel:#0f1117; --text:#e7e7e7; --muted:#9aa0a6; --line:rgba(255,255,255,0.08); }
       * { box-sizing:border-box; }
       body { margin:0; background:var(--bg); color:var(--text); font:13px/1.4 system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; }
-      .wrap { max-width:760px; padding:18px; margin:0 auto; }
+      .wrap { max-width:860px; padding:18px; margin:0 auto; }
       .card { border:1px solid var(--line); background:var(--panel); border-radius:12px; padding:14px; }
-      .field { margin-top:12px; }
-      .field:first-child { margin-top:0; }
-      label { display:block; color:var(--muted); margin-bottom:6px; }
+
+      .hook {
+        display: grid;
+        grid-template-columns: 160px 1fr;
+        gap: 10px;
+        margin-top: 12px;
+        padding-top: 12px;
+        border-top: 1px solid var(--line);
+      }
+      .hook:first-child {
+        margin-top: 0;
+        padding-top: 0;
+        border-top: none;
+      }
+
+      .pair label { display:block; color:var(--muted); margin-bottom:6px; }
       input {
         width:100%;
         padding:10px;
@@ -22,6 +35,7 @@
         color:var(--text);
         outline:none;
       }
+
       .row { display:flex; gap:10px; margin-top:14px; align-items:center; }
       button {
         border:1px solid var(--line);
@@ -39,25 +53,60 @@
   <body>
     <div class="wrap">
       <div class="card">
-        <div class="field">
-          <label for="wh1">Webhook 1</label>
-          <input id="wh1" placeholder="https://discord.com/api/webhooks/..." />
+
+        <div class="hook">
+          <div class="pair">
+            <label for="n1">Name 1</label>
+            <input id="n1" placeholder="e.g. Race Channel" />
+          </div>
+          <div class="pair">
+            <label for="u1">Webhook 1</label>
+            <input id="u1" placeholder="https://discord.com/api/webhooks/..." />
+          </div>
         </div>
-        <div class="field">
-          <label for="wh2">Webhook 2</label>
-          <input id="wh2" placeholder="https://discord.com/api/webhooks/..." />
+
+        <div class="hook">
+          <div class="pair">
+            <label for="n2">Name 2</label>
+            <input id="n2" placeholder="e.g. Testing" />
+          </div>
+          <div class="pair">
+            <label for="u2">Webhook 2</label>
+            <input id="u2" placeholder="https://discord.com/api/webhooks/..." />
+          </div>
         </div>
-        <div class="field">
-          <label for="wh3">Webhook 3</label>
-          <input id="wh3" placeholder="https://discord.com/api/webhooks/..." />
+
+        <div class="hook">
+          <div class="pair">
+            <label for="n3">Name 3</label>
+            <input id="n3" placeholder="e.g. Announcements" />
+          </div>
+          <div class="pair">
+            <label for="u3">Webhook 3</label>
+            <input id="u3" placeholder="https://discord.com/api/webhooks/..." />
+          </div>
         </div>
-        <div class="field">
-          <label for="wh4">Webhook 4</label>
-          <input id="wh4" placeholder="https://discord.com/api/webhooks/..." />
+
+        <div class="hook">
+          <div class="pair">
+            <label for="n4">Name 4</label>
+            <input id="n4" placeholder="Optional" />
+          </div>
+          <div class="pair">
+            <label for="u4">Webhook 4</label>
+            <input id="u4" placeholder="https://discord.com/api/webhooks/..." />
+          </div>
         </div>
-        <div class="field">
-          <label for="wh5">Webhook 5</label>
-          <input id="wh5" placeholder="https://discord.com/api/webhooks/..." />
+
+        <div class="hook">
+          <div class="pair">
+            <label for="n5">Name 5</label>
+            <input id="n5" placeholder="Optional" />
+          </div>
+          <div class="pair">
+            <label for="u5">Webhook 5</label>
+            <input id="u5" placeholder="https://discord.com/api/webhooks/..." />
+          </div>
         </div>
 
         <div class="row">
