@@ -12,8 +12,9 @@ const webhookSelect = el("webhookSelect");
 const dockLink = el("dock");
 
 const STORAGE_KEYS = {
-  WEBHOOKS: "webhooks",           // [{ name: string, url: string }] length 5
-  LAST_INDEX: "lastWebhookIndex"  // number 0..4
+  WEBHOOKS: "webhooks",            // [{ name: string, url: string }] length 5
+  LAST_INDEX: "lastWebhookIndex",  // number 0..4
+  DOCK_WINDOW_ID: "dockWindowId"   // number (chrome window id)
 };
 
 function clampInt(v, min, max) {
@@ -150,15 +151,42 @@ async function sendToDiscord(content) {
 }
 
 // --- Dock behavior ---
-// Chrome cannot "pin" the action popup; this opens the same UI in a small window that stays open.
-function openDockWindow() {
-  chrome.windows.create({
+// Focus existing dock window if it exists; otherwise create a new one and remember its windowId.
+async function focusOrCreateDockWindow() {
+  const { dockWindowId } = await chrome.storage.sync.get([STORAGE_KEYS.DOCK_WINDOW_ID]);
+  const id = Number.isInteger(dockWindowId) ? dockWindowId : null;
+
+  if (id !== null) {
+    try {
+      // If this succeeds, the window exists
+      await chrome.windows.update(id, { focused: true });
+      return;
+    } catch {
+      // Window was closed or invalid; clear and create anew
+      await chrome.storage.sync.remove([STORAGE_KEYS.DOCK_WINDOW_ID]);
+    }
+  }
+
+  const win = await chrome.windows.create({
     url: chrome.runtime.getURL("popup.html"),
     type: "popup",
     width: 380,
     height: 520
   });
+
+  if (win && Number.isInteger(win.id)) {
+    await chrome.storage.sync.set({ [STORAGE_KEYS.DOCK_WINDOW_ID]: win.id });
+  }
 }
+
+// If a dock window is closed, clear the stored id (so Dock recreates next time).
+// Note: This runs in any popup instance; it’s lightweight and avoids adding a background worker.
+chrome.windows.onRemoved.addListener(async (windowId) => {
+  const { dockWindowId } = await chrome.storage.sync.get([STORAGE_KEYS.DOCK_WINDOW_ID]);
+  if (Number.isInteger(dockWindowId) && dockWindowId === windowId) {
+    await chrome.storage.sync.remove([STORAGE_KEYS.DOCK_WINDOW_ID]);
+  }
+});
 
 // Events
 textEl.addEventListener("input", compileMessage);
@@ -186,9 +214,9 @@ openSettings.addEventListener("click", (e) => {
   chrome.runtime.openOptionsPage();
 });
 
-dockLink.addEventListener("click", (e) => {
+dockLink.addEventListener("click", async (e) => {
   e.preventDefault();
-  openDockWindow();
+  await focusOrCreateDockWindow();
 });
 
 // init
