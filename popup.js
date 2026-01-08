@@ -90,4 +90,91 @@ function optionLabel(i, entry) {
   return filled ? `${base} ${filled}` : base;
 }
 
-async function populateWebhookSelect()
+async function populateWebhookSelect() {
+  const { webhooks, lastWebhookIndex } = await getSettings();
+
+  webhookSelect.innerHTML = "";
+  for (let i = 0; i < 5; i++) {
+    const opt = document.createElement("option");
+    opt.value = String(i);
+    opt.textContent = optionLabel(i, webhooks[i]);
+    webhookSelect.appendChild(opt);
+  }
+
+  const idx = clampInt(lastWebhookIndex, 0, 4);
+  webhookSelect.value = String(idx);
+
+  if (!webhooks[idx].url) setStatus("Selected webhook is empty. Set it in Settings.");
+  else setStatus("");
+}
+
+async function rememberSelectedIndex() {
+  const idx = clampInt(webhookSelect.value, 0, 4);
+  await chrome.storage.sync.set({ [STORAGE_KEYS.LAST_INDEX]: idx });
+}
+
+async function getSelectedWebhookUrl() {
+  const { webhooks } = await getSettings();
+  const idx = clampInt(webhookSelect.value, 0, 4);
+  return (webhooks[idx]?.url || "").trim();
+}
+
+async function sendToDiscord(content) {
+  const webhookUrl = await getSelectedWebhookUrl();
+  if (!webhookUrl) {
+    setStatus("No webhook in this slot. Open Settings.");
+    return;
+  }
+
+  sendBtn.disabled = true;
+  setStatus("Sending…");
+
+  try {
+    const res = await fetch(webhookUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content })
+    });
+
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      throw new Error(`Discord error ${res.status}${text ? `: ${text}` : ""}`);
+    }
+
+    setStatus("Sent.");
+  } catch (err) {
+    setStatus(String(err?.message || err));
+  } finally {
+    sendBtn.disabled = false;
+  }
+}
+
+// Events
+textEl.addEventListener("input", compileMessage);
+minEl.addEventListener("input", compileMessage);
+secEl.addEventListener("input", compileMessage);
+useTsEl.addEventListener("change", compileMessage);
+
+webhookSelect.addEventListener("change", async () => {
+  await rememberSelectedIndex();
+  await populateWebhookSelect(); // refresh labels/status
+});
+
+sendBtn.addEventListener("click", async () => {
+  const compiled = compileMessage();
+  if (!compiled) {
+    setStatus("Nothing to send.");
+    return;
+  }
+  await rememberSelectedIndex();
+  await sendToDiscord(compiled);
+});
+
+openSettings.addEventListener("click", (e) => {
+  e.preventDefault();
+  chrome.runtime.openOptionsPage();
+});
+
+// init
+compileMessage();
+populateWebhookSelect();
