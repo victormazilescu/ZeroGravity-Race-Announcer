@@ -9,6 +9,7 @@ const sendBtn = el("send");
 const statusEl = el("status");
 const openSettings = el("openSettings");
 const webhookSelect = el("webhookSelect");
+const dockLink = el("dock");
 
 const STORAGE_KEYS = {
   WEBHOOKS: "webhooks",           // [{ name: string, url: string }] length 5
@@ -50,7 +51,6 @@ function compileMessage() {
 }
 
 function normalizeWebhookEntries(raw) {
-  // Support old format string[5] (URLs) gracefully by converting to objects.
   const out = [];
   if (Array.isArray(raw)) {
     for (let i = 0; i < 5; i++) {
@@ -149,6 +149,17 @@ async function sendToDiscord(content) {
   }
 }
 
+// --- Dock behavior ---
+// Chrome cannot "pin" the action popup; this opens the same UI in a small window that stays open.
+function openDockWindow() {
+  chrome.windows.create({
+    url: chrome.runtime.getURL("popup.html"),
+    type: "popup",
+    width: 380,
+    height: 520
+  });
+}
+
 // Events
 textEl.addEventListener("input", compileMessage);
 minEl.addEventListener("input", compileMessage);
@@ -157,7 +168,7 @@ useTsEl.addEventListener("change", compileMessage);
 
 webhookSelect.addEventListener("change", async () => {
   await rememberSelectedIndex();
-  await populateWebhookSelect(); // refresh labels/status
+  await populateWebhookSelect();
 });
 
 sendBtn.addEventListener("click", async () => {
@@ -173,6 +184,11 @@ sendBtn.addEventListener("click", async () => {
 openSettings.addEventListener("click", (e) => {
   e.preventDefault();
   chrome.runtime.openOptionsPage();
+});
+
+dockLink.addEventListener("click", (e) => {
+  e.preventDefault();
+  openDockWindow();
 });
 
 // init
