@@ -17,9 +17,9 @@ const scheduleLink = el("openSchedule");
 const STORAGE_KEYS = {
   WEBHOOKS: "webhooks",             // [{ name, url }] length 5
   LAST_INDEX: "lastWebhookIndex",   // 0..4
-  DOCK_WINDOW_ID: "dockWindowId",   // window id
+  DOCK_WINDOW_ID: "dockWindowId",
   SCHEDULE_WINDOW_ID: "scheduleWindowId",
-  SCHEDULE_ROWS: "scheduleRows"     // length 10 array
+  SCHEDULED_JOBS: "scheduledJobs"   // array of jobs, max 10
 };
 
 function clampInt(v, min, max) {
@@ -148,7 +148,7 @@ async function sendToDiscord(content) {
   }
 }
 
-/* ---------------- Window helpers (no duplicates) ---------------- */
+/* ---------------- window helpers (no duplicates) ---------------- */
 async function focusOrCreateWindow(storageKey, createOpts) {
   const obj = await chrome.storage.sync.get([storageKey]);
   const id = Number.isInteger(obj[storageKey]) ? obj[storageKey] : null;
@@ -181,8 +181,8 @@ async function focusOrCreateScheduleWindow() {
   return focusOrCreateWindow(STORAGE_KEYS.SCHEDULE_WINDOW_ID, {
     url: chrome.runtime.getURL("schedule.html"),
     type: "popup",
-    width: 780,
-    height: 520
+    width: 820,
+    height: 640
   });
 }
 
@@ -200,89 +200,48 @@ chrome.windows.onRemoved.addListener(async (windowId) => {
   }
 });
 
-/* ---------------- Schedule rows storage helpers ---------------- */
-function emptyRow() {
-  return {
-    id: "",
-    text: "",
-    delaySeconds: 0,
-    webhookIndex: 0,
-    kind: "scheduled", // or "reminder"
-    status: "empty",   // empty|scheduled|sent|canceled
-    createdAt: 0,
-    sendAt: 0
-  };
-}
-
-function normalizeScheduleRows(raw) {
-  const out = [];
+/* ---------------- scheduled jobs list helpers ---------------- */
+function normalizeJobs(raw) {
   const arr = Array.isArray(raw) ? raw : [];
-  for (let i = 0; i < 10; i++) {
-    const r = arr[i];
-    if (r && typeof r === "object") {
-      out.push({
-        id: String(r.id || ""),
-        text: String(r.text || ""),
-        delaySeconds: Number.isFinite(r.delaySeconds) ? r.delaySeconds : 0,
-        webhookIndex: Number.isInteger(r.webhookIndex) ? r.webhookIndex : 0,
-        kind: r.kind === "reminder" ? "reminder" : "scheduled",
-        status: ["empty", "scheduled", "sent", "canceled"].includes(r.status) ? r.status : "empty",
-        createdAt: Number.isFinite(r.createdAt) ? r.createdAt : 0,
-        sendAt: Number.isFinite(r.sendAt) ? r.sendAt : 0
-      });
-    } else {
-      out.push(emptyRow());
-    }
-  }
-  return out;
+  return arr
+    .filter((j) => j && typeof j === "object")
+    .map((j) => ({
+      id: String(j.id || ""),
+      text: String(j.text || ""),
+      webhookIndex: Number.isInteger(j.webhookIndex) ? j.webhookIndex : 0,
+      kind: j.kind === "reminder" ? "reminder" : "scheduled",
+      status: j.status === "scheduled" ? "scheduled" : "scheduled",
+      createdAt: Number.isFinite(j.createdAt) ? j.createdAt : 0,
+      sendAt: Number.isFinite(j.sendAt) ? j.sendAt : 0
+    }))
+    .filter((j) => j.id && j.text && j.sendAt);
 }
 
-async function getScheduleRows() {
-  const { scheduleRows } = await chrome.storage.sync.get([STORAGE_KEYS.SCHEDULE_ROWS]);
-  return normalizeScheduleRows(scheduleRows);
+async function getJobs() {
+  const { scheduledJobs } = await chrome.storage.sync.get([STORAGE_KEYS.SCHEDULED_JOBS]);
+  return normalizeJobs(scheduledJobs);
 }
 
-async function setScheduleRows(rows) {
-  await chrome.storage.sync.set({ [STORAGE_KEYS.SCHEDULE_ROWS]: rows });
+async function setJobs(jobs) {
+  await chrome.storage.sync.set({ [STORAGE_KEYS.SCHEDULED_JOBS]: jobs });
 }
 
 function uuid() {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
-async function scheduleReminderJob(reminderText, webhookIndex) {
-  const rows = await getScheduleRows();
-  const idx = rows.findIndex((r) => r.status === "empty");
-  if (idx === -1) {
-    return { ok: false, reason: "No free schedule slots for reminder." };
-  }
+async function addJob(job) {
+  const jobs = await getJobs();
+  if (jobs.length >= 10) return { ok: false, reason: "Maximum of 10 scheduled items reached" };
 
-  const id = uuid();
-  const nowSec = Math.floor(Date.now() / 1000);
-  const sendAt = nowSec + 60;
+  const next = [...jobs, job].sort((a, b) => a.sendAt - b.sendAt);
+  await setJobs(next);
 
-  rows[idx] = {
-    id,
-    text: reminderText,
-    delaySeconds: 60,
-    webhookIndex,
-    kind: "reminder",
-    status: "scheduled",
-    createdAt: nowSec,
-    sendAt
-  };
-
-  await setScheduleRows(rows);
-
-  await chrome.runtime.sendMessage({
-    type: "CREATE_JOB",
-    job: rows[idx]
-  });
-
+  await chrome.runtime.sendMessage({ type: "CREATE_JOB", job });
   return { ok: true };
 }
 
-/* ---------------- Events ---------------- */
+/* ---------------- events ---------------- */
 textEl.addEventListener("input", compileMessage);
 minEl.addEventListener("input", compileMessage);
 secEl.addEventListener("input", compileMessage);
@@ -309,14 +268,21 @@ sendBtn.addEventListener("click", async () => {
 
   if (use1mReminderEl.checked && rawText) {
     const webhookIndex = clampInt(webhookSelect.value, 0, 4);
-    const reminderText = `@everyone Reminder: ${rawText}`;
+    const nowSec = Math.floor(Date.now() / 1000);
 
-    const r = await scheduleReminderJob(reminderText, webhookIndex);
-    if (!r.ok) {
-      setStatus(r.reason);
-    } else {
-      setStatus("Sent. Reminder scheduled (+1m).");
-    }
+    const reminderJob = {
+      id: uuid(),
+      text: `@everyone Reminder: ${rawText}`,
+      webhookIndex,
+      kind: "reminder",
+      status: "scheduled",
+      createdAt: nowSec,
+      sendAt: nowSec + 60
+    };
+
+    const r = await addJob(reminderJob);
+    if (!r.ok) setStatus(r.reason);
+    else setStatus("Sent. Reminder scheduled (+1m).");
   }
 });
 
