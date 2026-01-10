@@ -1,6 +1,8 @@
 const STORAGE_KEYS = {
   WEBHOOKS: "webhooks",         // [{name,url}] length 5
-  SCHEDULED_JOBS: "scheduledJobs"
+  SCHEDULED_JOBS: "scheduledJobs",
+  DOCK_WINDOW_ID: "dockWindowId",
+  DOCK_BOUNDS: "dockBounds"     // {left,top,width,height}
 };
 
 function normalizeWebhookEntries(raw) {
@@ -86,7 +88,6 @@ async function handleAlarm(alarm) {
   const jobs = await getJobs();
   const job = jobs.find((j) => j.id === id);
 
-  // orphan alarm
   if (!job) {
     await chrome.alarms.clear(alarm.name);
     return;
@@ -100,13 +101,83 @@ async function handleAlarm(alarm) {
     if (!url) throw new Error("Webhook not configured.");
     await sendDiscord(url, job.text);
   } catch {
-    // If sending fails, still remove it to avoid repeated alarms/spam loops.
-    // User can reschedule manually.
+    // remove anyway to avoid loops
   } finally {
     await removeJobById(id);
     await chrome.alarms.clear(alarm.name);
   }
 }
+
+/* ---------------- Dock window open/focus ---------------- */
+
+async function focusOrCreateDockWindow() {
+  const { dockWindowId, dockBounds } = await chrome.storage.sync.get([
+    STORAGE_KEYS.DOCK_WINDOW_ID,
+    STORAGE_KEYS.DOCK_BOUNDS
+  ]);
+
+  const existingId = Number.isInteger(dockWindowId) ? dockWindowId : null;
+
+  if (existingId !== null) {
+    try {
+      await chrome.windows.update(existingId, { focused: true });
+      return;
+    } catch {
+      await chrome.storage.sync.remove([STORAGE_KEYS.DOCK_WINDOW_ID]);
+    }
+  }
+
+  const url = chrome.runtime.getURL("dock.html");
+
+  // Default size; if we have last bounds, reuse them.
+  const createOpts = {
+    url,
+    type: "popup",
+    focused: true,
+    width: 380,
+    height: 720
+  };
+
+  if (dockBounds && typeof dockBounds === "object") {
+    const { left, top, width, height } = dockBounds;
+    if (Number.isInteger(left)) createOpts.left = left;
+    if (Number.isInteger(top)) createOpts.top = top;
+    if (Number.isInteger(width)) createOpts.width = width;
+    if (Number.isInteger(height)) createOpts.height = height;
+  }
+
+  const win = await chrome.windows.create(createOpts);
+  if (win && Number.isInteger(win.id)) {
+    await chrome.storage.sync.set({ [STORAGE_KEYS.DOCK_WINDOW_ID]: win.id });
+  }
+}
+
+chrome.action.onClicked.addListener(() => {
+  focusOrCreateDockWindow();
+});
+
+chrome.windows.onRemoved.addListener(async (windowId) => {
+  const { dockWindowId } = await chrome.storage.sync.get([STORAGE_KEYS.DOCK_WINDOW_ID]);
+  if (Number.isInteger(dockWindowId) && dockWindowId === windowId) {
+    await chrome.storage.sync.remove([STORAGE_KEYS.DOCK_WINDOW_ID]);
+  }
+});
+
+// Store last dock bounds whenever it moves/resizes (best-effort)
+chrome.windows.onBoundsChanged.addListener(async (win) => {
+  const { dockWindowId } = await chrome.storage.sync.get([STORAGE_KEYS.DOCK_WINDOW_ID]);
+  if (!Number.isInteger(dockWindowId) || win.id !== dockWindowId) return;
+
+  const bounds = {
+    left: Number.isInteger(win.left) ? win.left : undefined,
+    top: Number.isInteger(win.top) ? win.top : undefined,
+    width: Number.isInteger(win.width) ? win.width : undefined,
+    height: Number.isInteger(win.height) ? win.height : undefined
+  };
+  await chrome.storage.sync.set({ [STORAGE_KEYS.DOCK_BOUNDS]: bounds });
+});
+
+/* ---------------- Messages from UI ---------------- */
 
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   (async () => {
