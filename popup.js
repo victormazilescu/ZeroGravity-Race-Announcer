@@ -4,17 +4,21 @@ const textEl = el("text");
 const minEl = el("min");
 const secEl = el("sec");
 const useTsEl = el("useTs");
+const use1mReminderEl = el("use1mReminder");
 const previewEl = el("preview");
 const sendBtn = el("send");
+const scheduleBtn = el("openSchedule");
 const statusEl = el("status");
 const openSettings = el("openSettings");
 const webhookSelect = el("webhookSelect");
 const dockLink = el("dock");
 
 const STORAGE_KEYS = {
-  WEBHOOKS: "webhooks",            // [{ name: string, url: string }] length 5
-  LAST_INDEX: "lastWebhookIndex",  // number 0..4
-  DOCK_WINDOW_ID: "dockWindowId"   // number (chrome window id)
+  WEBHOOKS: "webhooks",             // [{ name, url }] length 5
+  LAST_INDEX: "lastWebhookIndex",   // 0..4
+  DOCK_WINDOW_ID: "dockWindowId",   // window id
+  SCHEDULE_WINDOW_ID: "scheduleWindowId",
+  SCHEDULE_ROWS: "scheduleRows"     // length 10 array
 };
 
 function clampInt(v, min, max) {
@@ -34,7 +38,6 @@ function buildDiscordRelativeTimestamp(offsetSeconds) {
 
 function compileMessage() {
   const text = (textEl.value || "").trim();
-
   const m = clampInt(minEl.value, 0, 999);
   const s = clampInt(secEl.value, 0, 59);
 
@@ -56,16 +59,9 @@ function normalizeWebhookEntries(raw) {
   if (Array.isArray(raw)) {
     for (let i = 0; i < 5; i++) {
       const v = raw[i];
-      if (typeof v === "string") {
-        out.push({ name: "", url: (v || "").trim() });
-      } else if (v && typeof v === "object") {
-        out.push({
-          name: (v.name || "").trim(),
-          url: (v.url || "").trim()
-        });
-      } else {
-        out.push({ name: "", url: "" });
-      }
+      if (typeof v === "string") out.push({ name: "", url: (v || "").trim() });
+      else if (v && typeof v === "object") out.push({ name: (v.name || "").trim(), url: (v.url || "").trim() });
+      else out.push({ name: "", url: "" });
     }
   } else {
     for (let i = 0; i < 5; i++) out.push({ name: "", url: "" });
@@ -78,7 +74,6 @@ async function getSettings() {
     STORAGE_KEYS.WEBHOOKS,
     STORAGE_KEYS.LAST_INDEX
   ]);
-
   return {
     webhooks: normalizeWebhookEntries(webhooks),
     lastWebhookIndex: Number.isInteger(lastWebhookIndex) ? lastWebhookIndex : 0
@@ -124,7 +119,7 @@ async function sendToDiscord(content) {
   const webhookUrl = await getSelectedWebhookUrl();
   if (!webhookUrl) {
     setStatus("No webhook in this slot. Open Settings.");
-    return;
+    return { ok: false };
   }
 
   sendBtn.disabled = true;
@@ -143,52 +138,152 @@ async function sendToDiscord(content) {
     }
 
     setStatus("Sent.");
+    return { ok: true };
   } catch (err) {
     setStatus(String(err?.message || err));
+    return { ok: false };
   } finally {
     sendBtn.disabled = false;
   }
 }
 
-// --- Dock behavior ---
-// Focus existing dock window if it exists; otherwise create a new one and remember its windowId.
-async function focusOrCreateDockWindow() {
-  const { dockWindowId } = await chrome.storage.sync.get([STORAGE_KEYS.DOCK_WINDOW_ID]);
-  const id = Number.isInteger(dockWindowId) ? dockWindowId : null;
+/* ---------------- Dock window (no duplicates) ---------------- */
+async function focusOrCreateWindow(storageKey, createOpts) {
+  const obj = await chrome.storage.sync.get([storageKey]);
+  const id = Number.isInteger(obj[storageKey]) ? obj[storageKey] : null;
 
   if (id !== null) {
     try {
-      // If this succeeds, the window exists
       await chrome.windows.update(id, { focused: true });
       return;
     } catch {
-      // Window was closed or invalid; clear and create anew
-      await chrome.storage.sync.remove([STORAGE_KEYS.DOCK_WINDOW_ID]);
+      await chrome.storage.sync.remove([storageKey]);
     }
   }
 
-  const win = await chrome.windows.create({
+  const win = await chrome.windows.create(createOpts);
+  if (win && Number.isInteger(win.id)) {
+    await chrome.storage.sync.set({ [storageKey]: win.id });
+  }
+}
+
+async function focusOrCreateDockWindow() {
+  return focusOrCreateWindow(STORAGE_KEYS.DOCK_WINDOW_ID, {
     url: chrome.runtime.getURL("popup.html"),
     type: "popup",
     width: 380,
     height: 520
   });
-
-  if (win && Number.isInteger(win.id)) {
-    await chrome.storage.sync.set({ [STORAGE_KEYS.DOCK_WINDOW_ID]: win.id });
-  }
 }
 
-// If a dock window is closed, clear the stored id (so Dock recreates next time).
-// Note: This runs in any popup instance; it’s lightweight and avoids adding a background worker.
+async function focusOrCreateScheduleWindow() {
+  return focusOrCreateWindow(STORAGE_KEYS.SCHEDULE_WINDOW_ID, {
+    url: chrome.runtime.getURL("schedule.html"),
+    type: "popup",
+    width: 780,
+    height: 520
+  });
+}
+
 chrome.windows.onRemoved.addListener(async (windowId) => {
-  const { dockWindowId } = await chrome.storage.sync.get([STORAGE_KEYS.DOCK_WINDOW_ID]);
+  const { dockWindowId, scheduleWindowId } = await chrome.storage.sync.get([
+    STORAGE_KEYS.DOCK_WINDOW_ID,
+    STORAGE_KEYS.SCHEDULE_WINDOW_ID
+  ]);
+
   if (Number.isInteger(dockWindowId) && dockWindowId === windowId) {
     await chrome.storage.sync.remove([STORAGE_KEYS.DOCK_WINDOW_ID]);
   }
+  if (Number.isInteger(scheduleWindowId) && scheduleWindowId === windowId) {
+    await chrome.storage.sync.remove([STORAGE_KEYS.SCHEDULE_WINDOW_ID]);
+  }
 });
 
-// Events
+/* ---------------- Schedule rows storage helpers ---------------- */
+function emptyRow() {
+  return {
+    id: "",
+    text: "",
+    delaySeconds: 0,
+    webhookIndex: 0,
+    kind: "scheduled", // or "reminder"
+    status: "empty",   // empty|scheduled|sent|canceled
+    createdAt: 0,
+    sendAt: 0
+  };
+}
+
+function normalizeScheduleRows(raw) {
+  const out = [];
+  const arr = Array.isArray(raw) ? raw : [];
+  for (let i = 0; i < 10; i++) {
+    const r = arr[i];
+    if (r && typeof r === "object") {
+      out.push({
+        id: String(r.id || ""),
+        text: String(r.text || ""),
+        delaySeconds: Number.isFinite(r.delaySeconds) ? r.delaySeconds : 0,
+        webhookIndex: Number.isInteger(r.webhookIndex) ? r.webhookIndex : 0,
+        kind: r.kind === "reminder" ? "reminder" : "scheduled",
+        status: ["empty", "scheduled", "sent", "canceled"].includes(r.status) ? r.status : "empty",
+        createdAt: Number.isFinite(r.createdAt) ? r.createdAt : 0,
+        sendAt: Number.isFinite(r.sendAt) ? r.sendAt : 0
+      });
+    } else {
+      out.push(emptyRow());
+    }
+  }
+  return out;
+}
+
+async function getScheduleRows() {
+  const { scheduleRows } = await chrome.storage.sync.get([STORAGE_KEYS.SCHEDULE_ROWS]);
+  return normalizeScheduleRows(scheduleRows);
+}
+
+async function setScheduleRows(rows) {
+  await chrome.storage.sync.set({ [STORAGE_KEYS.SCHEDULE_ROWS]: rows });
+}
+
+function uuid() {
+  // good enough for local ids
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+async function scheduleReminderJob(reminderText, webhookIndex) {
+  const rows = await getScheduleRows();
+  const idx = rows.findIndex((r) => r.status === "empty");
+  if (idx === -1) {
+    return { ok: false, reason: "No free schedule slots for reminder." };
+  }
+
+  const id = uuid();
+  const nowSec = Math.floor(Date.now() / 1000);
+  const sendAt = nowSec + 60;
+
+  rows[idx] = {
+    id,
+    text: reminderText,
+    delaySeconds: 60,
+    webhookIndex,
+    kind: "reminder",
+    status: "scheduled",
+    createdAt: nowSec,
+    sendAt
+  };
+
+  await setScheduleRows(rows);
+
+  // create alarm via background
+  await chrome.runtime.sendMessage({
+    type: "CREATE_JOB",
+    job: rows[idx]
+  });
+
+  return { ok: true };
+}
+
+/* ---------------- Events ---------------- */
 textEl.addEventListener("input", compileMessage);
 minEl.addEventListener("input", compileMessage);
 secEl.addEventListener("input", compileMessage);
@@ -201,12 +296,31 @@ webhookSelect.addEventListener("change", async () => {
 
 sendBtn.addEventListener("click", async () => {
   const compiled = compileMessage();
+  const rawText = (textEl.value || "").trim();
+
   if (!compiled) {
     setStatus("Nothing to send.");
     return;
   }
+
   await rememberSelectedIndex();
-  await sendToDiscord(compiled);
+
+  const sendRes = await sendToDiscord(compiled);
+  if (!sendRes.ok) return;
+
+  // If reminder enabled: schedule a reminder job at +60 seconds (ONLY for immediate Send)
+  if (use1mReminderEl.checked && rawText) {
+    const webhookIndex = clampInt(webhookSelect.value, 0, 4);
+    const reminderText = `@everyone Reminder: ${rawText}`;
+
+    const r = await scheduleReminderJob(reminderText, webhookIndex);
+    if (!r.ok) {
+      // still sent main message; just tell user reminder couldn't be scheduled
+      setStatus(r.reason);
+    } else {
+      setStatus("Sent. Reminder scheduled (+1m).");
+    }
+  }
 });
 
 openSettings.addEventListener("click", (e) => {
@@ -217,6 +331,10 @@ openSettings.addEventListener("click", (e) => {
 dockLink.addEventListener("click", async (e) => {
   e.preventDefault();
   await focusOrCreateDockWindow();
+});
+
+scheduleBtn.addEventListener("click", async () => {
+  await focusOrCreateScheduleWindow();
 });
 
 // init
