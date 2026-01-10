@@ -178,26 +178,29 @@ function escapeHtml(str) {
 
 /* ---------- Message compiler ---------- */
 
-function buildDiscordRelativeTimestamp(offsetSeconds) {
-  const unix = Math.floor(Date.now() / 1000) + offsetSeconds;
+function buildDiscordRelativeTimestampFromUnix(unix) {
   return `<t:${unix}:R>`;
+}
+
+function getMessageDelaySeconds() {
+  const mm = clampInt(mMin.value, 0, 999);
+  const ss = clampInt(mSec.value, 0, 59);
+  mMin.value = String(mm);
+  mSec.value = String(ss);
+  return mm * 60 + ss;
 }
 
 function compileMessagePreview() {
   const text = (mText.value || "").trim();
-  const mm = clampInt(mMin.value, 0, 999);
-  const ss = clampInt(mSec.value, 0, 59);
+  const delaySeconds = getMessageDelaySeconds();
 
-  mMin.value = String(mm);
-  mSec.value = String(ss);
-
-  const offset = mm * 60 + ss;
-  const includeTs = mUseTs.checked && offset > 0;
-  const ts = includeTs ? buildDiscordRelativeTimestamp(offset) : "";
+  const includeTs = mUseTs.checked && delaySeconds > 0;
+  const eventUnix = Math.floor(Date.now() / 1000) + delaySeconds;
+  const ts = includeTs ? buildDiscordRelativeTimestampFromUnix(eventUnix) : "";
   const compiled = [text, ts].filter(Boolean).join(" ");
 
   mPreview.textContent = compiled || "—";
-  return { compiled, rawText: text };
+  return { compiled, rawText: text, delaySeconds, eventUnix };
 }
 
 async function sendDiscord(webhookUrl, content) {
@@ -234,7 +237,10 @@ function formatRemaining(sendAt) {
 
 function jobItemTemplate(job, hooks) {
   const rem = formatRemaining(job.sendAt);
-  const hookName = hookLabel(hooks[clampInt(job.webhookIndex, 0, 4)] || { name: "", url: "" }, clampInt(job.webhookIndex, 0, 4));
+  const hookName = hookLabel(
+    hooks[clampInt(job.webhookIndex, 0, 4)] || { name: "", url: "" },
+    clampInt(job.webhookIndex, 0, 4)
+  );
   const badge = job.kind === "reminder" ? "Auto (Reminder)" : "Scheduled";
 
   return `
@@ -437,7 +443,7 @@ mainWebhook.addEventListener("change", async () => {
 
 mSend.addEventListener("click", async () => {
   const { webhooks } = await getAll();
-  const { compiled, rawText } = compileMessagePreview();
+  const { compiled, rawText, delaySeconds, eventUnix } = compileMessagePreview();
 
   if (!compiled) return setStatus(mStatus, "Nothing to send.");
 
@@ -445,26 +451,46 @@ mSend.addEventListener("click", async () => {
   const url = (webhooks[webhookIndex]?.url || "").trim();
   if (!url) return setStatus(mStatus, "Selected webhook is empty. Set it in Settings.");
 
+  // Reminder only valid if timestamp is enabled (and delay allows “1m remaining”)
+  const reminderRequested = mReminder.checked;
+  const timestampEnabled = mUseTs.checked && delaySeconds > 0;
+
+  if (reminderRequested && !timestampEnabled) {
+    return setStatus(mStatus, "Enable Timestamp to use the 1m reminder.");
+  }
+  if (reminderRequested && delaySeconds < 60) {
+    return setStatus(mStatus, "Set at least 1:00 to use the 1m reminder.");
+  }
+
   mSend.disabled = true;
   setStatus(mStatus, "Sending…");
 
   try {
+    // Send main message immediately
     await sendDiscord(url, compiled);
     setStatus(mStatus, "Sent.");
 
-    if (mReminder.checked && rawText) {
+    // Schedule reminder so it arrives when event shows “1m remaining”
+    // That means: fire at (delaySeconds - 60), and include the SAME event timestamp.
+    if (reminderRequested && rawText) {
       const nowSec = Math.floor(Date.now() / 1000);
+      const reminderDelay = Math.max(0, delaySeconds - 60);
+
+      const reminderText = `@everyone Reminder: ${rawText} ${buildDiscordRelativeTimestampFromUnix(eventUnix)}`.trim();
+
       const reminderJob = {
         id: uuid(),
-        text: `@everyone Reminder: ${rawText}`,
+        text: reminderText,
         webhookIndex,
         kind: "reminder",
         status: "scheduled",
         createdAt: nowSec,
-        sendAt: nowSec + 60
+        sendAt: nowSec + reminderDelay
       };
+
       const r = await addJob(reminderJob);
-      setStatus(mStatus, r.ok ? "Sent. Reminder scheduled (+1m)." : r.reason);
+      if (r.ok) setStatus(mStatus, `Sent. Reminder set for 1m remaining.`);
+      else setStatus(mStatus, r.reason);
       await refreshScheduleView();
     }
   } catch (e) {
