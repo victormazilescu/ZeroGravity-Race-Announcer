@@ -12,6 +12,7 @@
         <select id="webhookSelect" class="select" aria-label="Webhook selector"></select>
 
         <div style="display:flex; gap:10px; align-items:center;">
+          <a class="settings" id="openSchedule" href="#">Schedule</a>
           <a class="settings" id="dock" href="#">Dock</a>
           <a class="settings" id="openSettings" href="#">Settings</a>
         </div>
@@ -28,7 +29,7 @@
         </div>
 
         <div style="display:flex; gap:12px; align-items:center;">
-          <label class="toggle" title="Append a Discord relative timestamp based on minutes/seconds">
+          <label class="toggle">
             <input id="useTs" type="checkbox" checked />
             <span>Timestamp</span>
           </label>
@@ -44,7 +45,6 @@
 
       <div class="row">
         <button id="send">Send</button>
-        <button id="openSchedule" class="secondary">Schedule Call</button>
       </div>
 
       <div class="status" id="status"></div>
