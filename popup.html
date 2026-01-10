@@ -27,16 +27,24 @@
           <span>s</span>
         </div>
 
-        <label class="toggle">
-          <input id="useTs" type="checkbox" checked />
-          <span>Timestamp</span>
-        </label>
+        <div style="display:flex; gap:12px; align-items:center;">
+          <label class="toggle" title="Append a Discord relative timestamp based on minutes/seconds">
+            <input id="useTs" type="checkbox" checked />
+            <span>Timestamp</span>
+          </label>
+
+          <label class="toggle" title="After sending now, schedule a reminder in 1 minute (@everyone)">
+            <input id="use1mReminder" type="checkbox" />
+            <span>1m reminder</span>
+          </label>
+        </div>
       </div>
 
       <div class="preview" id="preview"></div>
 
       <div class="row">
         <button id="send">Send</button>
+        <button id="openSchedule" class="secondary">Schedule Call</button>
       </div>
 
       <div class="status" id="status"></div>
