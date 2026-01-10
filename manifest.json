@@ -1,14 +1,17 @@
 {
   "manifest_version": 3,
   "name": "ZeroGravity Race Announcer",
-  "version": "1.2.0",
+  "version": "2.0.0",
   "description": "Minimal message compiler with optional Discord timestamp and multi-webhook sender.",
   "action": {
     "default_title": "ZeroGravity",
     "default_popup": "popup.html"
   },
   "options_page": "options.html",
-  "permissions": ["storage", "windows"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "permissions": ["storage", "windows", "alarms"],
   "host_permissions": [
     "https://discord.com/api/webhooks/*",
     "https://discordapp.com/api/webhooks/*"
