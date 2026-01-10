@@ -37,26 +37,19 @@ body {
   font-size: 11px;
 }
 
-.grid {
+.card {
   margin-top: 12px;
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 10px;
-}
-
-.row {
   border: 1px solid var(--line);
   border-radius: 12px;
-  padding: 10px;
-  display: grid;
-  grid-template-columns: 1.4fr 0.9fr 0.9fr auto;
-  gap: 10px;
-  align-items: center;
+  padding: 12px;
   background: rgba(255,255,255,0.02);
 }
 
-.row.locked {
-  opacity: 0.9;
+.compiler {
+  display: grid;
+  grid-template-columns: 1.6fr 0.9fr 1fr auto;
+  gap: 10px;
+  align-items: center;
 }
 
 input, select {
@@ -75,18 +68,6 @@ input, select {
   gap: 6px;
 }
 
-.badge {
-  color: var(--muted);
-  font-size: 11px;
-  margin-top: 4px;
-}
-
-.actions {
-  display: flex;
-  gap: 8px;
-  justify-content: flex-end;
-}
-
 button {
   border: 1px solid var(--line);
   background: var(--panel);
@@ -94,7 +75,7 @@ button {
   padding: 8px 10px;
   border-radius: 10px;
   cursor: pointer;
-  min-width: 84px;
+  min-width: 92px;
 }
 
 button.secondary {
@@ -110,6 +91,46 @@ button:disabled {
   margin-top: 10px;
   color: var(--muted);
   min-height: 16px;
+}
+
+.listHeader {
+  margin-top: 12px;
+  display: flex;
+  justify-content: space-between;
+  color: var(--muted);
+}
+
+.count {
+  font-variant-numeric: tabular-nums;
+}
+
+.list {
+  margin-top: 10px;
+  display: grid;
+  gap: 10px;
+}
+
+.item {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 10px;
+  display: grid;
+  grid-template-columns: 1.7fr 0.9fr 1fr auto;
+  gap: 10px;
+  align-items: center;
+  background: rgba(255,255,255,0.02);
+}
+
+.msg {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.badge {
+  color: var(--muted);
+  font-size: 11px;
+  margin-top: 4px;
 }
 
 .sig {
