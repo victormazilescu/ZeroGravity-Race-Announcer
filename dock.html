@@ -3,14 +3,13 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>ZeroGravity</title>
+    <title>Message Console</title>
     <link rel="stylesheet" href="dock.css" />
   </head>
   <body>
     <div class="app" id="app" data-mode="message" data-settings="closed">
-      <!-- top bar -->
       <div class="topbar">
-        <div class="brand">ZeroGravity</div>
+        <div class="brand">Message Console</div>
 
         <div class="topbarRight">
           <select id="mainWebhook" class="select"></select>
@@ -21,50 +20,53 @@
         </div>
       </div>
 
-      <!-- mode slider (message/schedule) -->
       <div class="viewport">
         <div class="stack" id="stack">
           <!-- MESSAGE PANEL -->
           <section class="panel panelMessage">
-            <div class="card">
-              <textarea id="mText" placeholder="Write message…"></textarea>
+            <div class="messageBody">
+              <div class="card">
+                <textarea id="mText" placeholder="Write message…"></textarea>
 
-              <div class="row">
-                <div class="time2">
-                  <input id="mMin" type="number" min="0" max="999" value="0" />
-                  <span>m</span>
-                  <input id="mSec" type="number" min="0" max="59" value="0" />
-                  <span>s</span>
+                <div class="row">
+                  <div class="time2">
+                    <input id="mMin" type="number" min="0" max="999" value="0" />
+                    <span>m</span>
+                    <input id="mSec" type="number" min="0" max="59" value="0" />
+                    <span>s</span>
+                  </div>
+
+                  <label class="toggle">
+                    <input id="mUseTs" type="checkbox" checked />
+                    <span>Timestamp</span>
+                  </label>
+
+                  <label class="toggle">
+                    <input id="mReminder" type="checkbox" />
+                    <span>1m @everyone</span>
+                  </label>
                 </div>
 
-                <label class="toggle">
-                  <input id="mUseTs" type="checkbox" checked />
-                  <span>Timestamp</span>
-                </label>
+                <div class="preview" id="mPreview">—</div>
 
-                <label class="toggle">
-                  <input id="mReminder" type="checkbox" />
-                  <span>1m @everyone</span>
-                </label>
+                <button id="mSend" class="primaryBtn">Send</button>
+
+                <div class="status" id="mStatus"></div>
               </div>
 
-              <div class="preview" id="mPreview">—</div>
-
-              <button id="mSend" class="primaryBtn">Send</button>
-
-              <div class="status" id="mStatus"></div>
+              <div class="card">
+                <div class="cardTitle">Quick actions</div>
+                <div class="qaGrid" id="qaGrid"></div>
+                <div class="hint">Each quick action sends instantly to its own webhook.</div>
+              </div>
             </div>
 
-            <div class="card">
-              <div class="cardTitle">Quick actions</div>
-              <div class="qaGrid" id="qaGrid"></div>
-              <div class="hint">Each quick action sends instantly to its own webhook.</div>
+            <div class="bottomBar">
+              <button id="toSchedule" class="modeBtn">
+                <span>Schedule</span>
+                <span class="arrow">⬆</span>
+              </button>
             </div>
-
-            <button id="toSchedule" class="modeBtn">
-              <span>Schedule</span>
-              <span class="arrow">⬆</span>
-            </button>
           </section>
 
           <!-- SCHEDULE PANEL -->
@@ -125,7 +127,7 @@
         </div>
       </aside>
 
-      <div class="sig">OblivionRex</div>
+      <div class="sig">© OblivionRex</div>
     </div>
 
     <script src="dock.js"></script>
