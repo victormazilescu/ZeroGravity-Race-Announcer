@@ -1,17 +1,20 @@
 {
   "manifest_version": 3,
   "name": "ZeroGravity Race Announcer",
-  "version": "3.0.2",
-  "description": "Dock-style Discord race announcer with scheduling and quick actions.",
+  "version": "3.1.0",
+  "description": "Discord race announcer with scheduling and quick actions in a docked side panel.",
   "action": {
-    "default_title": "ZeroGravity"
+    "default_title": "Message Console"
   },
   "background": {
     "service_worker": "background.js"
   },
-  "permissions": ["storage", "windows", "alarms", "system.display"],
+  "permissions": ["storage", "alarms", "sidePanel"],
   "host_permissions": [
     "https://discord.com/api/webhooks/*",
     "https://discordapp.com/api/webhooks/*"
-  ]
+  ],
+  "side_panel": {
+    "default_path": "sidepanel.html"
+  }
 }
