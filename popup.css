@@ -102,13 +102,17 @@ textarea::placeholder { color: var(--muted); }
 }
 
 button {
-  width: 100%;
+  flex: 1;
   border: 1px solid var(--line);
   background: var(--panel);
   color: var(--text);
   padding: 9px 10px;
   border-radius: 10px;
   cursor: pointer;
+}
+
+button.secondary {
+  background: transparent;
 }
 
 button:disabled {
