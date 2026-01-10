@@ -1,13 +1,11 @@
 {
   "manifest_version": 3,
   "name": "ZeroGravity Race Announcer",
-  "version": "2.0.0",
-  "description": "Minimal message compiler with optional Discord timestamp and multi-webhook sender.",
+  "version": "3.0.1",
+  "description": "Dock-style Discord race announcer with scheduling and quick actions.",
   "action": {
-    "default_title": "ZeroGravity",
-    "default_popup": "popup.html"
+    "default_title": "ZeroGravity"
   },
-  "options_page": "options.html",
   "background": {
     "service_worker": "background.js"
   },
