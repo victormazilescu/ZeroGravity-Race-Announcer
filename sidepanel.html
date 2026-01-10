@@ -36,15 +36,23 @@
                     <span>s</span>
                   </div>
 
-                  <label class="toggle">
-                    <input id="mUseTs" type="checkbox" checked />
-                    <span>Timestamp</span>
-                  </label>
+                  <div class="toggles">
+                    <label class="switchRow">
+                      <span class="switchLabel">Timestamp</span>
+                      <span class="switch">
+                        <input id="mUseTs" type="checkbox" checked />
+                        <span class="slider"></span>
+                      </span>
+                    </label>
 
-                  <label class="toggle">
-                    <input id="mReminder" type="checkbox" />
-                    <span>1m @everyone</span>
-                  </label>
+                    <label class="switchRow">
+                      <span class="switchLabel">Add 1m reminder before event</span>
+                      <span class="switch">
+                        <input id="mReminder" type="checkbox" />
+                        <span class="slider"></span>
+                      </span>
+                    </label>
+                  </div>
                 </div>
 
                 <div class="preview" id="mPreview">—</div>
