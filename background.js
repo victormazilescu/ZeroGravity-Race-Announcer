@@ -1,8 +1,6 @@
 const STORAGE_KEYS = {
   WEBHOOKS: "webhooks",
-  SCHEDULED_JOBS: "scheduledJobs",
-  DOCK_WINDOW_ID: "dockWindowId",
-  DOCK_BOUNDS: "dockBounds"
+  SCHEDULED_JOBS: "scheduledJobs"
 };
 
 function normalizeWebhookEntries(raw) {
@@ -108,110 +106,25 @@ async function handleAlarm(alarm) {
   }
 }
 
-/* ---------------- Dock window open/focus ---------------- */
-
-async function getPrimaryDisplayWorkArea() {
-  return new Promise((resolve) => {
-    if (!chrome?.system?.display?.getInfo) {
-      resolve(null);
-      return;
-    }
-    chrome.system.display.getInfo((displays) => {
-      if (!Array.isArray(displays) || displays.length === 0) return resolve(null);
-      const primary = displays.find((d) => d.isPrimary) || displays[0];
-      const wa = primary.workArea || primary.bounds;
-      resolve(wa || null);
-    });
-  });
-}
-
-async function focusOrCreateDockWindow() {
-  const { dockWindowId, dockBounds } = await chrome.storage.sync.get([
-    STORAGE_KEYS.DOCK_WINDOW_ID,
-    STORAGE_KEYS.DOCK_BOUNDS
-  ]);
-
-  const existingId = Number.isInteger(dockWindowId) ? dockWindowId : null;
-
-  if (existingId !== null) {
-    try {
-      await chrome.windows.update(existingId, { focused: true });
-      return;
-    } catch {
-      await chrome.storage.sync.remove([STORAGE_KEYS.DOCK_WINDOW_ID]);
-    }
-  }
-
-  const url = chrome.runtime.getURL("dock.html");
-
-  // If you have last bounds, reuse (user may have moved it)
-  if (dockBounds && typeof dockBounds === "object") {
-    const createOpts = {
-      url,
-      type: "popup",
-      focused: true,
-      width: Number.isInteger(dockBounds.width) ? dockBounds.width : 380,
-      height: Number.isInteger(dockBounds.height) ? dockBounds.height : 720
-    };
-    if (Number.isInteger(dockBounds.left)) createOpts.left = dockBounds.left;
-    if (Number.isInteger(dockBounds.top)) createOpts.top = dockBounds.top;
-
-    const win = await chrome.windows.create(createOpts);
-    if (win && Number.isInteger(win.id)) {
-      await chrome.storage.sync.set({ [STORAGE_KEYS.DOCK_WINDOW_ID]: win.id });
-    }
-    return;
-  }
-
-  // Otherwise snap to right edge of primary display work area
-  const wa = await getPrimaryDisplayWorkArea();
-  const width = 380;
-  const height = wa?.height ? Math.min(wa.height, 840) : 720;
-
-  const left = wa?.left != null && wa?.width != null ? (wa.left + wa.width - width) : undefined;
-  const top = wa?.top != null ? wa.top : undefined;
-
-  const win = await chrome.windows.create({
-    url,
-    type: "popup",
-    focused: true,
-    width,
-    height,
-    ...(Number.isInteger(left) ? { left } : {}),
-    ...(Number.isInteger(top) ? { top } : {})
-  });
-
-  if (win && Number.isInteger(win.id)) {
-    await chrome.storage.sync.set({ [STORAGE_KEYS.DOCK_WINDOW_ID]: win.id });
-  }
-}
-
-chrome.action.onClicked.addListener(() => {
-  focusOrCreateDockWindow();
-});
-
-chrome.windows.onRemoved.addListener(async (windowId) => {
-  const { dockWindowId } = await chrome.storage.sync.get([STORAGE_KEYS.DOCK_WINDOW_ID]);
-  if (Number.isInteger(dockWindowId) && dockWindowId === windowId) {
-    await chrome.storage.sync.remove([STORAGE_KEYS.DOCK_WINDOW_ID]);
+// ---- Side panel behavior (this is the “dock” feel) ----
+chrome.runtime.onInstalled.addListener(async () => {
+  if (chrome.sidePanel?.setPanelBehavior) {
+    await chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true });
   }
 });
 
-chrome.windows.onBoundsChanged.addListener(async (win) => {
-  const { dockWindowId } = await chrome.storage.sync.get([STORAGE_KEYS.DOCK_WINDOW_ID]);
-  if (!Number.isInteger(dockWindowId) || win.id !== dockWindowId) return;
-
-  const bounds = {
-    left: Number.isInteger(win.left) ? win.left : undefined,
-    top: Number.isInteger(win.top) ? win.top : undefined,
-    width: Number.isInteger(win.width) ? win.width : undefined,
-    height: Number.isInteger(win.height) ? win.height : undefined
-  };
-  await chrome.storage.sync.set({ [STORAGE_KEYS.DOCK_BOUNDS]: bounds });
+chrome.action.onClicked.addListener(async (tab) => {
+  // If openPanelOnActionClick works, this is redundant—but harmless.
+  try {
+    if (chrome.sidePanel?.open && tab?.id != null) {
+      await chrome.sidePanel.open({ tabId: tab.id });
+    }
+  } catch {
+    // ignore
+  }
 });
 
-/* ---------------- Messages from UI ---------------- */
-
+// ---- Messages from UI ----
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   (async () => {
     try {
