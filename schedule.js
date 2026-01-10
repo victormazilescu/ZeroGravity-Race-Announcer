@@ -1,10 +1,18 @@
 const STORAGE_KEYS = {
   WEBHOOKS: "webhooks",
-  SCHEDULE_ROWS: "scheduleRows"
+  SCHEDULED_JOBS: "scheduledJobs"
 };
 
-const grid = document.getElementById("grid");
+const cText = document.getElementById("cText");
+const cH = document.getElementById("cH");
+const cM = document.getElementById("cM");
+const cS = document.getElementById("cS");
+const cHook = document.getElementById("cHook");
+const cAdd = document.getElementById("cAdd");
+
 const statusEl = document.getElementById("status");
+const listEl = document.getElementById("list");
+const countEl = document.getElementById("count");
 
 function setStatus(msg) {
   statusEl.textContent = msg || "";
@@ -16,17 +24,8 @@ function clampInt(v, min, max) {
   return Math.max(min, Math.min(max, n));
 }
 
-function emptyRow() {
-  return {
-    id: "",
-    text: "",
-    delaySeconds: 0,
-    webhookIndex: 0,
-    kind: "scheduled",
-    status: "empty",
-    createdAt: 0,
-    sendAt: 0
-  };
+function uuid() {
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
 function normalizeWebhookEntries(raw) {
@@ -44,27 +43,21 @@ function normalizeWebhookEntries(raw) {
   return out;
 }
 
-function normalizeScheduleRows(raw) {
-  const out = [];
+function normalizeJobs(raw) {
   const arr = Array.isArray(raw) ? raw : [];
-  for (let i = 0; i < 10; i++) {
-    const r = arr[i];
-    if (r && typeof r === "object") {
-      out.push({
-        id: String(r.id || ""),
-        text: String(r.text || ""),
-        delaySeconds: Number.isFinite(r.delaySeconds) ? r.delaySeconds : 0,
-        webhookIndex: Number.isInteger(r.webhookIndex) ? r.webhookIndex : 0,
-        kind: r.kind === "reminder" ? "reminder" : "scheduled",
-        status: ["empty", "scheduled", "sent", "canceled"].includes(r.status) ? r.status : "empty",
-        createdAt: Number.isFinite(r.createdAt) ? r.createdAt : 0,
-        sendAt: Number.isFinite(r.sendAt) ? r.sendAt : 0
-      });
-    } else {
-      out.push(emptyRow());
-    }
-  }
-  return out;
+  return arr
+    .filter((j) => j && typeof j === "object")
+    .map((j) => ({
+      id: String(j.id || ""),
+      text: String(j.text || ""),
+      webhookIndex: Number.isInteger(j.webhookIndex) ? j.webhookIndex : 0,
+      kind: j.kind === "reminder" ? "reminder" : "scheduled",
+      status: "scheduled",
+      createdAt: Number.isFinite(j.createdAt) ? j.createdAt : 0,
+      sendAt: Number.isFinite(j.sendAt) ? j.sendAt : 0
+    }))
+    .filter((j) => j.id && j.text && j.sendAt)
+    .sort((a, b) => a.sendAt - b.sendAt);
 }
 
 async function getWebhooks() {
@@ -72,27 +65,24 @@ async function getWebhooks() {
   return normalizeWebhookEntries(webhooks);
 }
 
-async function getRows() {
-  const { scheduleRows } = await chrome.storage.sync.get([STORAGE_KEYS.SCHEDULE_ROWS]);
-  return normalizeScheduleRows(scheduleRows);
+async function getJobs() {
+  const { scheduledJobs } = await chrome.storage.sync.get([STORAGE_KEYS.SCHEDULED_JOBS]);
+  return normalizeJobs(scheduledJobs);
 }
 
-async function setRows(rows) {
-  await chrome.storage.sync.set({ [STORAGE_KEYS.SCHEDULE_ROWS]: rows });
+async function setJobs(jobs) {
+  await chrome.storage.sync.set({ [STORAGE_KEYS.SCHEDULED_JOBS]: jobs });
 }
 
-function uuid() {
-  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+function hookLabel(h, i) {
+  const base = h.name ? h.name : `Webhook ${i + 1}`;
+  const mark = h.url ? " ✓" : "";
+  return `${base}${mark}`;
 }
 
-function makeWebhookOptions(hooks, selected) {
-  return hooks
-    .map((h, i) => {
-      const name = h.name ? h.name : `Webhook ${i + 1}`;
-      const mark = h.url ? " ✓" : "";
-      const sel = i === selected ? "selected" : "";
-      return `<option value="${i}" ${sel}>${name}${mark}</option>`;
-    })
+function renderHookSelect(hooks) {
+  cHook.innerHTML = hooks
+    .map((h, i) => `<option value="${i}">${hookLabel(h, i)}</option>`)
     .join("");
 }
 
@@ -105,131 +95,114 @@ function escapeHtml(str) {
     .replaceAll("'", "&#039;");
 }
 
-function renderRow(i, row, hooks) {
-  const locked = row.status === "scheduled";
-  const isReminder = row.kind === "reminder";
+function itemTemplate(job, hooks) {
+  const now = Math.floor(Date.now() / 1000);
+  const remaining = Math.max(0, job.sendAt - now);
 
-  const h = clampInt(Math.floor((row.delaySeconds || 0) / 3600), 0, 999);
-  const m = clampInt(Math.floor(((row.delaySeconds || 0) % 3600) / 60), 0, 59);
-  const s = clampInt((row.delaySeconds || 0) % 60, 0, 59);
-
-  let badge = "";
-  if (locked) {
-    const remaining = row.sendAt ? Math.max(0, row.sendAt - Math.floor(Date.now() / 1000)) : 0;
-    badge = isReminder
-      ? `Auto (Reminder) · ${remaining}s remaining`
-      : `Scheduled · ${remaining}s remaining`;
-  }
+  const hookName = hookLabel(hooks[clampInt(job.webhookIndex, 0, 4)] || { name: "", url: "" }, clampInt(job.webhookIndex, 0, 4));
+  const badge = job.kind === "reminder" ? "Auto (Reminder)" : "";
 
   return `
-    <div class="row ${locked ? "locked" : ""}" data-index="${i}">
+    <div class="item" data-id="${escapeHtml(job.id)}">
       <div>
-        <input
-          class="text"
-          placeholder="Message to send…"
-          value="${escapeHtml(row.text)}"
-          ${locked ? "disabled" : ""}
-        />
-        ${badge ? `<div class="badge">${badge}</div>` : ""}
+        <div class="msg">${escapeHtml(job.text)}</div>
+        <div class="badge">${badge ? `${badge} · ` : ""}${remaining}s remaining</div>
       </div>
 
-      <div class="time">
-        <input class="hh" type="number" min="0" max="999" value="${h}" ${locked || isReminder ? "disabled" : ""} />
-        <input class="mm" type="number" min="0" max="59" value="${m}" ${locked || isReminder ? "disabled" : ""} />
-        <input class="ss" type="number" min="0" max="59" value="${s}" ${locked || isReminder ? "disabled" : ""} />
-      </div>
+      <div class="msg">${escapeHtml(String(remaining))}s</div>
 
-      <select class="hook" ${locked ? "disabled" : ""}>
-        ${makeWebhookOptions(hooks, clampInt(row.webhookIndex, 0, 4))}
-      </select>
+      <div class="msg">${escapeHtml(hookName)}</div>
 
-      <div class="actions">
-        ${
-          locked
-            ? `<button class="secondary cancel">Cancel</button>`
-            : `<button class="schedule">Schedule</button>`
-        }
+      <div style="display:flex; justify-content:flex-end;">
+        <button class="secondary cancel">Cancel</button>
       </div>
     </div>
   `;
 }
 
-async function render() {
+async function refresh() {
   const hooks = await getWebhooks();
-  const rows = await getRows();
+  renderHookSelect(hooks);
 
-  grid.innerHTML = rows.map((r, i) => renderRow(i, r, hooks)).join("");
+  const jobs = await getJobs();
+  countEl.textContent = `${jobs.length}/10`;
 
-  grid.querySelectorAll(".row").forEach((rowEl) => {
-    const index = clampInt(rowEl.getAttribute("data-index"), 0, 9);
+  cAdd.disabled = jobs.length >= 10;
+  if (jobs.length >= 10) setStatus("Maximum of 10 scheduled items reached");
 
-    const scheduleBtn = rowEl.querySelector("button.schedule");
-    const cancelBtn = rowEl.querySelector("button.cancel");
+  if (jobs.length === 0) {
+    listEl.innerHTML = "";
+    return;
+  }
 
-    if (scheduleBtn) {
-      scheduleBtn.addEventListener("click", async () => {
-        const text = (rowEl.querySelector("input.text").value || "").trim();
-        const hh = clampInt(rowEl.querySelector("input.hh").value, 0, 999);
-        const mm = clampInt(rowEl.querySelector("input.mm").value, 0, 59);
-        const ss = clampInt(rowEl.querySelector("input.ss").value, 0, 59);
-        const hookIndex = clampInt(rowEl.querySelector("select.hook").value, 0, 4);
+  listEl.innerHTML = jobs.map((j) => itemTemplate(j, hooks)).join("");
 
-        const delaySeconds = hh * 3600 + mm * 60 + ss;
-
-        if (!text) {
-          setStatus("Row message is empty.");
-          return;
-        }
-        if (delaySeconds < 10) {
-          setStatus("Delay must be at least 10 seconds.");
-          return;
-        }
-
-        const allRows = await getRows();
-        const nowSec = Math.floor(Date.now() / 1000);
-        const id = uuid();
-
-        allRows[index] = {
-          id,
-          text,
-          delaySeconds,
-          webhookIndex: hookIndex,
-          kind: "scheduled",
-          status: "scheduled",
-          createdAt: nowSec,
-          sendAt: nowSec + delaySeconds
-        };
-
-        await setRows(allRows);
-
-        await chrome.runtime.sendMessage({
-          type: "CREATE_JOB",
-          job: allRows[index]
-        });
-
-        setStatus("Scheduled.");
-        await render();
-      });
-    }
-
-    if (cancelBtn) {
-      cancelBtn.addEventListener("click", async () => {
-        const allRows = await getRows();
-        const id = allRows[index]?.id;
-        if (!id) return;
-
-        await chrome.runtime.sendMessage({ type: "CANCEL_JOB", id });
-        setStatus("Canceled.");
-        await render();
-      });
-    }
+  listEl.querySelectorAll(".cancel").forEach((btn) => {
+    btn.addEventListener("click", async (e) => {
+      const item = e.target.closest(".item");
+      const id = item.getAttribute("data-id");
+      await chrome.runtime.sendMessage({ type: "CANCEL_JOB", id });
+      setStatus("Canceled.");
+      await refresh();
+    });
   });
 }
 
+async function addFromCompiler() {
+  const text = (cText.value || "").trim();
+  const hh = clampInt(cH.value, 0, 999);
+  const mm = clampInt(cM.value, 0, 59);
+  const ss = clampInt(cS.value, 0, 59);
+  const hookIndex = clampInt(cHook.value, 0, 4);
+
+  const delaySeconds = hh * 3600 + mm * 60 + ss;
+
+  if (!text) {
+    setStatus("Message is empty.");
+    return;
+  }
+  if (delaySeconds < 10) {
+    setStatus("Delay must be at least 10 seconds.");
+    return;
+  }
+
+  const jobs = await getJobs();
+  if (jobs.length >= 10) {
+    setStatus("Maximum of 10 scheduled items reached");
+    return;
+  }
+
+  const nowSec = Math.floor(Date.now() / 1000);
+  const job = {
+    id: uuid(),
+    text,
+    webhookIndex: hookIndex,
+    kind: "scheduled",
+    status: "scheduled",
+    createdAt: nowSec,
+    sendAt: nowSec + delaySeconds
+  };
+
+  const next = [...jobs, job].sort((a, b) => a.sendAt - b.sendAt);
+  await setJobs(next);
+  await chrome.runtime.sendMessage({ type: "CREATE_JOB", job });
+
+  // clear compiler
+  cText.value = "";
+  cH.value = "0";
+  cM.value = "0";
+  cS.value = "10";
+
+  setStatus("Scheduled.");
+  await refresh();
+}
+
+cAdd.addEventListener("click", addFromCompiler);
+
 let timer = null;
 async function start() {
-  await render();
-  timer = setInterval(render, 1200);
+  await refresh();
+  timer = setInterval(refresh, 1000);
 }
 
 window.addEventListener("beforeunload", () => {
