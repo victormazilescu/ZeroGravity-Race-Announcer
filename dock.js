@@ -1,14 +1,13 @@
 const STORAGE_KEYS = {
-  WEBHOOKS: "webhooks",             // [{name,url}] length 5
-  LAST_INDEX: "lastWebhookIndex",   // 0..4
-  SCHEDULED_JOBS: "scheduledJobs",  // array max 10
-  QUICK_ACTIONS: "quickActions"     // array length 9
+  WEBHOOKS: "webhooks",
+  LAST_INDEX: "lastWebhookIndex",
+  SCHEDULED_JOBS: "scheduledJobs",
+  QUICK_ACTIONS: "quickActions"
 };
 
 const $ = (id) => document.getElementById(id);
 
 const app = $("app");
-const stack = $("stack");
 
 // top
 const mainWebhook = $("mainWebhook");
@@ -40,7 +39,6 @@ const jobList = $("jobList");
 const jobCount = $("jobCount");
 
 // settings overlay
-const settingsPane = $("settings");
 const whList = $("whList");
 const qaList = $("qaList");
 
@@ -248,7 +246,9 @@ function jobItemTemplate(job, hooks) {
 }
 
 async function refreshScheduleView() {
-  const { webhooks, jobs } = await getAll();
+  const { webhooks, jobs, lastWebhookIndex } = await getAll();
+
+  renderHookSelect(sWebhook, webhooks, lastWebhookIndex);
 
   jobCount.textContent = `${jobs.length}/10`;
   sAdd.disabled = jobs.length >= 10;
@@ -295,7 +295,6 @@ async function handleQuickActionClick(index, btn) {
   const { webhooks, quickActions } = await getAll();
   const qa = quickActions[index];
 
-  // Immediate feedback
   setQaState(btn, "state-sending");
 
   try {
@@ -314,7 +313,6 @@ async function handleQuickActionClick(index, btn) {
     setQaState(btn, "state-bad");
     setStatus(mStatus, String(e?.message || e));
   } finally {
-    // Return to idle after a moment
     setTimeout(() => setQaState(btn, ""), 900);
   }
 }
@@ -399,7 +397,6 @@ function renderSettingsQuickActions(quickActions, webhooks) {
     const hookEl = row.querySelector(".qaHook");
     const msgEl = row.querySelector(".qaMsg");
 
-    // hook select options
     hookEl.innerHTML = webhooks
       .map((h, i) => `<option value="${i}">${escapeHtml(hookLabel(h, i))}</option>`)
       .join("");
@@ -430,11 +427,12 @@ async function refreshAllUI() {
 
   renderSettingsWebhooks(webhooks);
   renderSettingsQuickActions(quickActions, webhooks);
+
   await renderQuickActions();
   await refreshScheduleView();
 }
 
-/* ---------- Events ---------- */
+/* ---------- Wire events ---------- */
 
 mText.addEventListener("input", compileMessagePreview);
 mMin.addEventListener("input", compileMessagePreview);
@@ -446,14 +444,10 @@ mainWebhook.addEventListener("change", async () => {
   await refreshAllUI();
 });
 
-sWebhook.addEventListener("change", async () => {
-  await setLastWebhookIndex(clampInt(sWebhook.value, 0, 4));
-  await refreshAllUI();
-});
-
 mSend.addEventListener("click", async () => {
   const { webhooks } = await getAll();
   const { compiled, rawText } = compileMessagePreview();
+
   if (!compiled) {
     setStatus(mStatus, "Nothing to send.");
     return;
@@ -474,7 +468,6 @@ mSend.addEventListener("click", async () => {
     await sendDiscord(url, compiled);
     setStatus(mStatus, "Sent.");
 
-    // Reminder only for Send-now
     if (mReminder.checked && rawText) {
       const nowSec = Math.floor(Date.now() / 1000);
       const reminderJob = {
@@ -509,7 +502,6 @@ settingsBtn.addEventListener("click", async () => {
   if (!open) await refreshAllUI();
 });
 
-// Schedule compiler
 sAdd.addEventListener("click", async () => {
   const text = (sText.value || "").trim();
   const hh = clampInt(sH.value, 0, 999);
@@ -546,7 +538,6 @@ sAdd.addEventListener("click", async () => {
     return;
   }
 
-  // reset
   sText.value = "";
   sH.value = "0";
   sM.value = "0";
@@ -556,20 +547,18 @@ sAdd.addEventListener("click", async () => {
   await refreshScheduleView();
 });
 
-// refresh schedule list periodically (for remaining time + auto removal)
+// refresh schedule list periodically for remaining time and auto-removal
 setInterval(() => {
   refreshScheduleView();
 }, 1000);
 
 /* ---------- Init ---------- */
 (async function init() {
-  // Default mode: message
-  setMode("message");
+  setMode("message");         // default view
   setSettingsOpen(false);
 
-  // Ensure defaults exist for quick actions
   const { quickActions, webhooks, lastWebhookIndex } = await getAll();
-  await setQuickActions(quickActions); // normalized to 9
+  await setQuickActions(quickActions); // normalize to 9
 
   renderHookSelect(mainWebhook, webhooks, lastWebhookIndex);
   renderHookSelect(sWebhook, webhooks, lastWebhookIndex);
@@ -577,6 +566,4 @@ setInterval(() => {
   compileMessagePreview();
   await renderQuickActions();
   await refreshScheduleView();
-
-  // Settings UI initial render (only opens on demand)
 })();
