@@ -102,7 +102,7 @@ textarea::placeholder { color: var(--muted); }
 }
 
 button {
-  flex: 1;
+  width: 100%;
   border: 1px solid var(--line);
   background: var(--panel);
   color: var(--text);
