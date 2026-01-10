@@ -96,31 +96,47 @@ function makeWebhookOptions(hooks, selected) {
     .join("");
 }
 
+function escapeHtml(str) {
+  return String(str || "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
 function renderRow(i, row, hooks) {
   const locked = row.status === "scheduled";
-  const kindBadge = row.kind === "reminder" ? "Auto (Reminder)" : "";
+  const isReminder = row.kind === "reminder";
 
   const h = clampInt(Math.floor((row.delaySeconds || 0) / 3600), 0, 999);
   const m = clampInt(Math.floor(((row.delaySeconds || 0) % 3600) / 60), 0, 59);
   const s = clampInt((row.delaySeconds || 0) % 60, 0, 59);
 
-  const remainingSec =
-    locked && row.sendAt ? Math.max(0, row.sendAt - Math.floor(Date.now() / 1000)) : 0;
+  let badge = "";
+  if (locked) {
+    const remaining = row.sendAt ? Math.max(0, row.sendAt - Math.floor(Date.now() / 1000)) : 0;
+    badge = isReminder
+      ? `Auto (Reminder) · ${remaining}s remaining`
+      : `Scheduled · ${remaining}s remaining`;
+  }
 
-  const remainingLabel =
-    locked ? `Scheduled · ${remainingSec}s remaining` : "Not scheduled";
-
-  const html = `
+  return `
     <div class="row ${locked ? "locked" : ""}" data-index="${i}">
       <div>
-        <input class="text" placeholder="Message…" value="${escapeHtml(row.text)}" ${locked ? "disabled" : ""} />
-        <div class="badge">${kindBadge ? `${kindBadge} · ` : ""}${remainingLabel}</div>
+        <input
+          class="text"
+          placeholder="Message to send…"
+          value="${escapeHtml(row.text)}"
+          ${locked ? "disabled" : ""}
+        />
+        ${badge ? `<div class="badge">${badge}</div>` : ""}
       </div>
 
       <div class="time">
-        <input class="hh" type="number" min="0" max="999" value="${h}" ${locked || row.kind === "reminder" ? "disabled" : ""} />
-        <input class="mm" type="number" min="0" max="59" value="${m}" ${locked || row.kind === "reminder" ? "disabled" : ""} />
-        <input class="ss" type="number" min="0" max="59" value="${s}" ${locked || row.kind === "reminder" ? "disabled" : ""} />
+        <input class="hh" type="number" min="0" max="999" value="${h}" ${locked || isReminder ? "disabled" : ""} />
+        <input class="mm" type="number" min="0" max="59" value="${m}" ${locked || isReminder ? "disabled" : ""} />
+        <input class="ss" type="number" min="0" max="59" value="${s}" ${locked || isReminder ? "disabled" : ""} />
       </div>
 
       <select class="hook" ${locked ? "disabled" : ""}>
@@ -136,16 +152,6 @@ function renderRow(i, row, hooks) {
       </div>
     </div>
   `;
-  return html;
-}
-
-function escapeHtml(str) {
-  return String(str || "")
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#039;");
 }
 
 async function render() {
@@ -154,7 +160,6 @@ async function render() {
 
   grid.innerHTML = rows.map((r, i) => renderRow(i, r, hooks)).join("");
 
-  // Attach handlers
   grid.querySelectorAll(".row").forEach((rowEl) => {
     const index = clampInt(rowEl.getAttribute("data-index"), 0, 9);
 
@@ -221,7 +226,6 @@ async function render() {
   });
 }
 
-// Auto-refresh so reminder rows inserted by popup appear and countdown updates
 let timer = null;
 async function start() {
   await render();
