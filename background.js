@@ -1,6 +1,6 @@
 const STORAGE_KEYS = {
-  WEBHOOKS: "webhooks",          // [{name,url}] length 5
-  SCHEDULE_ROWS: "scheduleRows"  // length 10
+  WEBHOOKS: "webhooks",         // [{name,url}] length 5
+  SCHEDULED_JOBS: "scheduledJobs"
 };
 
 function normalizeWebhookEntries(raw) {
@@ -18,40 +18,20 @@ function normalizeWebhookEntries(raw) {
   return out;
 }
 
-function emptyRow() {
-  return {
-    id: "",
-    text: "",
-    delaySeconds: 0,
-    webhookIndex: 0,
-    kind: "scheduled",
-    status: "empty",
-    createdAt: 0,
-    sendAt: 0
-  };
-}
-
-function normalizeScheduleRows(raw) {
-  const out = [];
+function normalizeJobs(raw) {
   const arr = Array.isArray(raw) ? raw : [];
-  for (let i = 0; i < 10; i++) {
-    const r = arr[i];
-    if (r && typeof r === "object") {
-      out.push({
-        id: String(r.id || ""),
-        text: String(r.text || ""),
-        delaySeconds: Number.isFinite(r.delaySeconds) ? r.delaySeconds : 0,
-        webhookIndex: Number.isInteger(r.webhookIndex) ? r.webhookIndex : 0,
-        kind: r.kind === "reminder" ? "reminder" : "scheduled",
-        status: ["empty", "scheduled", "sent", "canceled"].includes(r.status) ? r.status : "empty",
-        createdAt: Number.isFinite(r.createdAt) ? r.createdAt : 0,
-        sendAt: Number.isFinite(r.sendAt) ? r.sendAt : 0
-      });
-    } else {
-      out.push(emptyRow());
-    }
-  }
-  return out;
+  return arr
+    .filter((j) => j && typeof j === "object")
+    .map((j) => ({
+      id: String(j.id || ""),
+      text: String(j.text || ""),
+      webhookIndex: Number.isInteger(j.webhookIndex) ? j.webhookIndex : 0,
+      kind: j.kind === "reminder" ? "reminder" : "scheduled",
+      status: "scheduled",
+      createdAt: Number.isFinite(j.createdAt) ? j.createdAt : 0,
+      sendAt: Number.isFinite(j.sendAt) ? j.sendAt : 0
+    }))
+    .filter((j) => j.id && j.text && j.sendAt);
 }
 
 async function getWebhooks() {
@@ -59,13 +39,13 @@ async function getWebhooks() {
   return normalizeWebhookEntries(webhooks);
 }
 
-async function getScheduleRows() {
-  const { scheduleRows } = await chrome.storage.sync.get([STORAGE_KEYS.SCHEDULE_ROWS]);
-  return normalizeScheduleRows(scheduleRows);
+async function getJobs() {
+  const { scheduledJobs } = await chrome.storage.sync.get([STORAGE_KEYS.SCHEDULED_JOBS]);
+  return normalizeJobs(scheduledJobs);
 }
 
-async function setScheduleRows(rows) {
-  await chrome.storage.sync.set({ [STORAGE_KEYS.SCHEDULE_ROWS]: rows });
+async function setJobs(jobs) {
+  await chrome.storage.sync.set({ [STORAGE_KEYS.SCHEDULED_JOBS]: jobs });
 }
 
 function alarmNameForJobId(id) {
@@ -73,7 +53,7 @@ function alarmNameForJobId(id) {
 }
 
 async function createAlarmForJob(job) {
-  const whenMs = Math.max(Date.now() + 250, job.sendAt * 1000); // ensure future
+  const whenMs = Math.max(Date.now() + 250, job.sendAt * 1000);
   await chrome.alarms.create(alarmNameForJobId(job.id), { when: whenMs });
 }
 
@@ -93,21 +73,21 @@ async function sendDiscord(webhookUrl, content) {
   }
 }
 
+async function removeJobById(id) {
+  const jobs = await getJobs();
+  const next = jobs.filter((j) => j.id !== id);
+  await setJobs(next);
+}
+
 async function handleAlarm(alarm) {
-  if (!alarm || !alarm.name || !alarm.name.startsWith("zg-job:")) return;
-
+  if (!alarm?.name?.startsWith("zg-job:")) return;
   const id = alarm.name.slice("zg-job:".length);
-  const rows = await getScheduleRows();
-  const idx = rows.findIndex((r) => r.id === id);
 
-  if (idx === -1) {
-    // orphan alarm
-    await chrome.alarms.clear(alarm.name);
-    return;
-  }
+  const jobs = await getJobs();
+  const job = jobs.find((j) => j.id === id);
 
-  const job = rows[idx];
-  if (job.status !== "scheduled") {
+  // orphan alarm
+  if (!job) {
     await chrome.alarms.clear(alarm.name);
     return;
   }
@@ -119,21 +99,15 @@ async function handleAlarm(alarm) {
   try {
     if (!url) throw new Error("Webhook not configured.");
     await sendDiscord(url, job.text);
-
-    // Auto-clear after sending (frees slot)
-    rows[idx] = emptyRow();
-    await setScheduleRows(rows);
-  } catch (err) {
-    // If send failed, keep it scheduled but mark canceled? We'll keep it scheduled and free the alarm to avoid loops.
-    // User can re-schedule manually.
-    rows[idx].status = "canceled";
-    await setScheduleRows(rows);
+  } catch {
+    // If sending fails, still remove it to avoid repeated alarms/spam loops.
+    // User can reschedule manually.
   } finally {
+    await removeJobById(id);
     await chrome.alarms.clear(alarm.name);
   }
 }
 
-/* Create job message from UI */
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   (async () => {
     try {
@@ -144,12 +118,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       }
 
       if (msg?.type === "CANCEL_JOB" && msg.id) {
-        const rows = await getScheduleRows();
-        const idx = rows.findIndex((r) => r.id === msg.id);
-        if (idx !== -1) {
-          rows[idx] = emptyRow();
-          await setScheduleRows(rows);
-        }
+        await removeJobById(msg.id);
         await removeAlarmForJobId(msg.id);
         sendResponse({ ok: true });
         return;
@@ -161,7 +130,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     }
   })();
 
-  return true; // keep message channel open
+  return true;
 });
 
 chrome.alarms.onAlarm.addListener((alarm) => {
