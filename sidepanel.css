@@ -10,6 +10,10 @@
 
   --blur: 10px;
   --radius: 14px;
+
+  --toggle-off: rgba(255,255,255,0.16);
+  --toggle-on: rgba(120,255,190,0.55);
+  --toggle-knob: rgba(255,255,255,0.95);
 }
 
 *{box-sizing:border-box}
@@ -100,7 +104,7 @@ body{
   height:50%;
   padding:12px;
   overflow:auto;
-  padding-bottom: 44px;
+  padding-bottom: 56px; /* extra space so signature never overlaps */
 }
 
 .card{
@@ -129,8 +133,8 @@ textarea::placeholder, .input::placeholder{ color: rgba(255,255,255,0.35); }
 
 .row{
   display:flex;
-  align-items:center;
-  gap:10px;
+  align-items:flex-start;
+  gap:12px;
   margin-top:10px;
   flex-wrap:wrap;
 }
@@ -152,12 +156,80 @@ textarea::placeholder, .input::placeholder{ color: rgba(255,255,255,0.35); }
   outline:none;
 }
 
-.toggle{
+.toggles{
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+  flex: 1;
+  min-width: 220px;
+  padding-top: 1px;
+}
+
+/* Apple-like toggle rows */
+.switchRow{
   display:flex;
   align-items:center;
-  gap:8px;
+  justify-content:space-between;
+  gap:12px;
+  width:100%;
   color: var(--muted);
   user-select:none;
+}
+
+.switchLabel{
+  line-height:1.2;
+  color: rgba(255,255,255,0.70);
+}
+
+/* iOS switch */
+.switch{
+  position:relative;
+  width:42px;
+  height:24px;
+  flex: 0 0 auto;
+}
+
+.switch input{
+  opacity:0;
+  width:0;
+  height:0;
+}
+
+.slider{
+  position:absolute;
+  inset:0;
+  border-radius: 999px;
+  background: var(--toggle-off);
+  border: 1px solid rgba(255,255,255,0.18);
+  transition: background 180ms ease, border-color 180ms ease;
+}
+
+.slider::before{
+  content:"";
+  position:absolute;
+  height:20px;
+  width:20px;
+  left:2px;
+  top:50%;
+  transform: translateY(-50%);
+  border-radius: 999px;
+  background: var(--toggle-knob);
+  box-shadow: 0 6px 18px rgba(0,0,0,0.35);
+  transition: transform 180ms ease;
+}
+
+.switch input:checked + .slider{
+  background: var(--toggle-on);
+  border-color: rgba(120,255,190,0.45);
+}
+
+.switch input:checked + .slider::before{
+  transform: translate(18px, -50%);
+}
+
+.switch input:focus-visible + .slider{
+  outline: 2px solid rgba(255,255,255,0.22);
+  outline-offset: 2px;
 }
 
 .preview{
@@ -382,12 +454,14 @@ textarea::placeholder, .input::placeholder{ color: rgba(255,255,255,0.35); }
   font-size:11px;
 }
 
+/* Signature: never clipped */
 .sig{
   position:absolute;
-  right:14px;
-  bottom:10px;
+  right: calc(16px + env(safe-area-inset-right));
+  bottom: calc(12px + env(safe-area-inset-bottom));
   color: rgba(255,255,255,0.26);
   font-size:10px;
+  letter-spacing:0.2px;
   pointer-events:none;
   z-index: 60;
 }
