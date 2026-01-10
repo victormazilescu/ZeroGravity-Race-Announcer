@@ -7,11 +7,12 @@ const useTsEl = el("useTs");
 const use1mReminderEl = el("use1mReminder");
 const previewEl = el("preview");
 const sendBtn = el("send");
-const scheduleBtn = el("openSchedule");
 const statusEl = el("status");
+
 const openSettings = el("openSettings");
 const webhookSelect = el("webhookSelect");
 const dockLink = el("dock");
+const scheduleLink = el("openSchedule");
 
 const STORAGE_KEYS = {
   WEBHOOKS: "webhooks",             // [{ name, url }] length 5
@@ -147,7 +148,7 @@ async function sendToDiscord(content) {
   }
 }
 
-/* ---------------- Dock window (no duplicates) ---------------- */
+/* ---------------- Window helpers (no duplicates) ---------------- */
 async function focusOrCreateWindow(storageKey, createOpts) {
   const obj = await chrome.storage.sync.get([storageKey]);
   const id = Number.isInteger(obj[storageKey]) ? obj[storageKey] : null;
@@ -246,7 +247,6 @@ async function setScheduleRows(rows) {
 }
 
 function uuid() {
-  // good enough for local ids
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
@@ -274,7 +274,6 @@ async function scheduleReminderJob(reminderText, webhookIndex) {
 
   await setScheduleRows(rows);
 
-  // create alarm via background
   await chrome.runtime.sendMessage({
     type: "CREATE_JOB",
     job: rows[idx]
@@ -308,14 +307,12 @@ sendBtn.addEventListener("click", async () => {
   const sendRes = await sendToDiscord(compiled);
   if (!sendRes.ok) return;
 
-  // If reminder enabled: schedule a reminder job at +60 seconds (ONLY for immediate Send)
   if (use1mReminderEl.checked && rawText) {
     const webhookIndex = clampInt(webhookSelect.value, 0, 4);
     const reminderText = `@everyone Reminder: ${rawText}`;
 
     const r = await scheduleReminderJob(reminderText, webhookIndex);
     if (!r.ok) {
-      // still sent main message; just tell user reminder couldn't be scheduled
       setStatus(r.reason);
     } else {
       setStatus("Sent. Reminder scheduled (+1m).");
@@ -333,7 +330,8 @@ dockLink.addEventListener("click", async (e) => {
   await focusOrCreateDockWindow();
 });
 
-scheduleBtn.addEventListener("click", async () => {
+scheduleLink.addEventListener("click", async (e) => {
+  e.preventDefault();
   await focusOrCreateScheduleWindow();
 });
 
